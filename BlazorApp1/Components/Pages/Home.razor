@@ -1,0 +1,137 @@
+﻿@page "/"
+@inject HttpClient Http
+@inject INotificationService NotificationService;
+@using BlazorApp1.Models
+@using System.Xml.Linq
+@using System.Text
+@using System.Globalization
+
+<PageTitle>Transaction Submission</PageTitle>
+
+<div class="form-container">
+    <h3>Ввод данных транзакции</h3>
+    <div>
+        <label>Transaction ID:</label>
+        <input type="text" @bind="fraudModel.transactionId" />
+    </div>
+    <div>
+        <label>Сумма:</label>
+        <input type="number" @bind="fraudModel.amount" />
+    </div>
+    <div>
+        <label>Номер карты:</label>
+        <input type="text" @bind="fraudModel.cardNumber" />
+    </div>
+    <div>
+        <label>Дата:</label>
+        <input type="date" @bind="fraudModel.date" />
+    </div>
+    <div>
+        <label>Местоположение:</label>
+        <input type="text" @bind="fraudModel.location" />
+        <button @onclick="ConvertCurrency" style="margin-top: 10px;">Конвертировать валюту</button> <!-- Кнопка для конвертации валюты -->
+    </div>
+    
+    
+    <button @onclick="SubmitTransaction">Отправить</button>
+</div>
+
+<div class="response-container" style="margin-top: 20px; border: 1px solid #ccc; border-radius: 4px; padding: 10px; background-color: #f9f9f9;">
+    <h4 style="margin: 0;">Ответ от API (Является ли фродом?):</h4>
+    <p style="margin: 5px 0;">@fraudResponse.apiResponse</p> <!-- Отображаем ответ от API -->
+    <h4>Конвертированная сумма:</h4>
+    <p>USD (Доллар): @converterModel.convertedAmountUSD $</p>
+    <p>CNY (Юань): @converterModel.convertedAmountCNY ¥</p>
+</div>
+
+@code 
+{
+    private FraudModelcs fraudModel = new FraudModelcs();
+    private FraudResponse fraudResponse = new FraudResponse();
+
+    private string apiUrl = "https://fraudapi-production.up.railway.app/api/GetFraud"; // FRAUD API
+    private string apiUrl1 = "https://www.cbr.ru/scripts/XML_daily.asp"; // CB RF API
+
+    private ConverterModel converterModel = new ConverterModel();
+
+    private async Task SubmitTransaction() 
+    {            
+        try        
+        {            
+            var requestData = new { TransactionId = fraudModel.transactionId, Amount = fraudModel.amount, CardNumber = fraudModel.cardNumber, Date = fraudModel.date, Location = fraudModel.location };
+            var response = await Http.PostAsJsonAsync(apiUrl, requestData);            
+            if(response.IsSuccessStatusCode)            
+            {                
+            // await NotificationService.Info("Транзакция успешно отправлена!");
+            // apiResponse = await response.Content.ReadAsStringAsync();
+            var jsonResponse = await response.Content.ReadFromJsonAsync<Dictionary<string,bool>>();
+            fraudResponse.apiResponse = jsonResponse != null && jsonResponse.TryGetValue("success", out bool successResult) ? successResult.ToString() : "False";
+            
+        }
+            
+        else            
+        {                
+            await NotificationService.Error("Ошибка при отправке транзакции!");            
+        }        
+        }        
+            catch(Exception ex)        
+        {                
+            await NotificationService.Error($"Ошибка:{ex.Message}");        
+        }   
+    }
+
+    private async Task ConvertCurrency()   
+    {        
+        try
+        {
+            // Отправляем GET запрос и получаем ответ
+            var response = await Http.GetAsync(apiUrl1);
+
+            // Убедимся, что запрос выполнен успешно
+            response.EnsureSuccessStatusCode();
+
+            // Читаем ответ как байтовый массив
+            var responseBytes = await response.Content.ReadAsByteArrayAsync();
+
+            // Декодируем байты с использованием правильной кодировки
+            var content = Encoding.GetEncoding("windows-1251").GetString(responseBytes);
+
+            // Загружаем XML из строки
+            var xmlDoc = XDocument.Parse(content);
+
+            // Извлекаем курсы валют
+            string rubToUsdString = (from x in xmlDoc.Descendants("Valute")
+                                     where x.Element("CharCode")?.Value == "USD"
+                                     select x.Element("Value")?.Value).FirstOrDefault();
+
+            string rubToCnyString = (from x in xmlDoc.Descendants("Valute")
+                                     where x.Element("CharCode")?.Value == "CNY"
+                                     select x.Element("Value")?.Value).FirstOrDefault();
+
+            // Пытаемся преобразовать с явным указанием CultureInfo.InvariantCulture
+            decimal rubToUsd = 0m;
+            decimal rubToCny = 0m;
+
+            if (rubToUsdString != null)
+            {
+                rubToUsdString = rubToUsdString.Trim().Replace(',', '.');
+                rubToUsd = decimal.Parse(rubToUsdString, CultureInfo.InvariantCulture);
+                converterModel.convertedAmountUSD = rubToUsd != 0 ? Math.Round(fraudModel.amount / rubToUsd, 3) : 0; // Округление до 3 знаков
+            }
+
+            if (rubToCnyString != null)
+            {
+                rubToCnyString = rubToCnyString.Trim().Replace(',', '.');
+                rubToCny = decimal.Parse(rubToCnyString, CultureInfo.InvariantCulture);
+                converterModel.convertedAmountCNY = rubToCny != 0 ? Math.Round(fraudModel.amount / rubToCny, 3) : 0; // Округление до 3 знаков
+            }
+
+            // Вывод информации пользователю
+            await NotificationService.Info("Конвертация завершена!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.Error($"Ошибка при конвертации валюты: {ex.Message}");
+        }
+    }
+}
