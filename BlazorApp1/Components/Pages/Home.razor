@@ -65,12 +65,11 @@
             var requestData = new { TransactionId = fraudModel.transactionId, Amount = fraudModel.amount, CardNumber = fraudModel.cardNumber, Date = fraudModel.date, Location = fraudModel.location };
             var response = await Http.PostAsJsonAsync(apiUrl, requestData);            
             if(response.IsSuccessStatusCode)            
-            {                
-            // await NotificationService.Info("Транзакция успешно отправлена!");
-            // apiResponse = await response.Content.ReadAsStringAsync();
+            {           
             var jsonResponse = await response.Content.ReadFromJsonAsync<Dictionary<string,bool>>();
             fraudResponse.apiResponse = jsonResponse != null && jsonResponse.TryGetValue("success", out bool successResult) ? successResult.ToString() : "False";
-            
+            await NotificationService.Info("Транзакция успешно отправлена!");
+                
         }
             
         else            
