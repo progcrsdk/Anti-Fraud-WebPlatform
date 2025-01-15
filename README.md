@@ -23,7 +23,7 @@ Anti-Fraud Web Platform — это веб-приложение, разработ
 ### Предварительные требования
 
 - [.NET SDK 6.0 или новее](https://dotnet.microsoft.com/download)
-- Любой текстовый редактор или IDE (например, Visual Studio, Visual Studio Code)
+- Любой текстовый редактор или IDE (Visual Studio)
 
 ## Использование
 
