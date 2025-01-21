@@ -5,6 +5,7 @@
 @using System.Xml.Linq
 @using System.Text
 @using System.Globalization
+@using System.Collections.Generic
 
 <PageTitle>Transaction Submission</PageTitle>
 
@@ -33,76 +34,138 @@
     <div>
         <label>Местоположение:</label>
         <input type="text" @bind="fraudModel.location" />
-        <button @onclick="ConvertCurrency" style="margin-top: 10px;">Конвертировать валюту</button> <!-- Кнопка для конвертации валюты -->
+        <button @onclick="ConvertCurrency" style="margin-top: 10px;">Конвертировать валюту</button>
     </div>
-    
-    
+
     <button @onclick="SubmitTransaction">Отправить</button>
+
+    <h3>Поиск лога проверок</h3>
+    <div>
+        <label>Номер карты для лога:</label>
+        <input type="text" @bind="logCardNumber" />
+        <button @onclick="GetLog">Получить лог</button>
+    </div>
+
+    <div class="log-container" style="margin-top: 20px;">
+        <h4>Журнал транзакций:</h4>
+        @if (auditLogEntries.Count == 0)
+        {
+            <p>Журнал пуст. Выполните проверку транзакций для получения записей.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var log in auditLogEntries)
+                {
+                    <li class="log-entry">
+                        <div class="log-details">
+                            <strong>Транзакция ID:</strong> @log.TransactionId <br />
+                            <strong>Номер карты:</strong> @log.CardNumber <br />
+                            <strong>Сумма:</strong> @log.Amount <br />
+                            <strong>Является фродом:</strong> @log.IsFraudulent <br />
+                            <strong>Дата:</strong> @log.Timestamp.ToString("g")
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
 </div>
 
 <div class="response-container" style="margin-top: 20px; border: 1px solid #ccc; border-radius: 4px; padding: 10px; background-color: #f9f9f9;">
     <h4 style="margin: 0;">Ответ от API (Является ли фродом?):</h4>
-    <p style="margin: 5px 0;">@fraudResponse.apiResponse</p> <!-- Отображаем ответ от API -->
+    <p style="margin: 5px 0;">@fraudResponse.apiResponse</p>
     <h4>Конвертированная сумма:</h4>
     <p>USD (Доллар): @converterModel.convertedAmountUSD $</p>
     <p>CNY (Юань): @converterModel.convertedAmountCNY ¥</p>
 </div>
 
-@code 
+<style>
+    .log-container {
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        background-color: #fdfdfd;
+        padding: 15px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .log-container h4 {
+        margin-top: 0;
+    }
+
+    ul {
+        list-style-type: none;
+        padding: 0;
+    }
+
+    .log-entry {
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 10px;
+        padding: 10px 0;
+    }
+
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+
+    .log-details {
+        font-size: 14px;
+        color: #333;
+    }
+
+    .log-details strong {
+        display: inline-block;
+        width: 140px; 
+    }
+</style>
+
+@code
 {
     private FraudModelcs fraudModel = new FraudModelcs();
     private FraudResponse fraudResponse = new FraudResponse();
 
+    private string logCardNumber; // Для ввода номера карты для получения лога
+    private List<AuditLogEntry> auditLogEntries = new List<AuditLogEntry>(); // Список логов
+
     private string apiUrl = "https://fraudapi-production.up.railway.app/api/GetFraud"; // FRAUD API
     private string apiUrl1 = "https://www.cbr.ru/scripts/XML_daily.asp"; // CB RF API
+    private string apiUrl2 = "https://fraudapi-production.up.railway.app/api/GetLog"; // Для получения лога
 
     private ConverterModel converterModel = new ConverterModel();
 
-    private async Task SubmitTransaction() 
-    {            
-        try        
-        {            
-            var requestData = new { TransactionId = fraudModel.transactionId, Amount = fraudModel.amount, CardNumber = fraudModel.cardNumber, Date = fraudModel.date, Location = fraudModel.location };
-            var response = await Http.PostAsJsonAsync(apiUrl, requestData);            
-            if(response.IsSuccessStatusCode)            
-            {           
-            var jsonResponse = await response.Content.ReadFromJsonAsync<Dictionary<string,bool>>();
-            fraudResponse.apiResponse = jsonResponse != null && jsonResponse.TryGetValue("success", out bool successResult) ? successResult.ToString() : "False";
-            await NotificationService.Info("Транзакция успешно отправлена!");
-                
-        }
-            
-        else            
-        {                
-            await NotificationService.Error("Ошибка при отправке транзакции!");            
-        }        
-        }        
-            catch(Exception ex)        
-        {                
-            await NotificationService.Error($"Ошибка:{ex.Message}");        
-        }   
-    }
-
-    private async Task ConvertCurrency()   
-    {        
+    private async Task SubmitTransaction()
+    {
         try
         {
-            // Отправляем GET запрос и получаем ответ
+            var requestData = new { TransactionId = fraudModel.transactionId, Amount = fraudModel.amount, CardNumber = fraudModel.cardNumber, Date = fraudModel.date, Location = fraudModel.location };
+            var response = await Http.PostAsJsonAsync(apiUrl, requestData);
+            if (response.IsSuccessStatusCode)
+            {
+                var jsonResponse = await response.Content.ReadFromJsonAsync<Dictionary<string, bool>>();
+                fraudResponse.apiResponse = jsonResponse != null && jsonResponse.TryGetValue("success", out bool successResult) ? successResult.ToString() : "False";
+                await NotificationService.Info("Транзакция успешно отправлена!");
+            }
+            else
+            {
+                await NotificationService.Error("Ошибка при отправке транзакции!");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.Error($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task ConvertCurrency()
+    {
+        try
+        {
             var response = await Http.GetAsync(apiUrl1);
-
-            // Убедимся, что запрос выполнен успешно
             response.EnsureSuccessStatusCode();
-
-            // Читаем ответ как байтовый массив
             var responseBytes = await response.Content.ReadAsByteArrayAsync();
-
-            // Декодируем байты с использованием правильной кодировки
             var content = Encoding.GetEncoding("windows-1251").GetString(responseBytes);
-
-            // Загружаем XML из строки
             var xmlDoc = XDocument.Parse(content);
 
-            // Извлекаем курсы валют
             string rubToUsdString = (from x in xmlDoc.Descendants("Valute")
                                      where x.Element("CharCode")?.Value == "USD"
                                      select x.Element("Value")?.Value).FirstOrDefault();
@@ -111,7 +174,6 @@
                                      where x.Element("CharCode")?.Value == "CNY"
                                      select x.Element("Value")?.Value).FirstOrDefault();
 
-            // Пытаемся преобразовать с явным указанием CultureInfo.InvariantCulture
             decimal rubToUsd = 0m;
             decimal rubToCny = 0m;
 
@@ -119,22 +181,44 @@
             {
                 rubToUsdString = rubToUsdString.Trim().Replace(',', '.');
                 rubToUsd = decimal.Parse(rubToUsdString, CultureInfo.InvariantCulture);
-                converterModel.convertedAmountUSD = rubToUsd != 0 ? Math.Round(fraudModel.amount / rubToUsd, 3) : 0; // Округление до 3 знаков
+                converterModel.convertedAmountUSD = rubToUsd != 0 ? Math.Round(fraudModel.amount / rubToUsd, 3) : 0;
             }
 
             if (rubToCnyString != null)
             {
                 rubToCnyString = rubToCnyString.Trim().Replace(',', '.');
                 rubToCny = decimal.Parse(rubToCnyString, CultureInfo.InvariantCulture);
-                converterModel.convertedAmountCNY = rubToCny != 0 ? Math.Round(fraudModel.amount / rubToCny, 3) : 0; // Округление до 3 знаков
+                converterModel.convertedAmountCNY = rubToCny != 0 ? Math.Round(fraudModel.amount / rubToCny, 3) : 0;
             }
 
-            // Вывод информации пользователю
             await NotificationService.Info("Конвертация завершена!");
         }
         catch (Exception ex)
         {
             await NotificationService.Error($"Ошибка при конвертации валюты: {ex.Message}");
+        }
+    }
+
+    private async Task GetLog()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(logCardNumber))
+            {
+                await NotificationService.Error("Введите номер карты для получения лога.");
+                return;
+            }
+
+            var response = await Http.GetAsync($"{apiUrl2}?cardNumber={logCardNumber}");
+            response.EnsureSuccessStatusCode();
+
+            auditLogEntries = await response.Content.ReadFromJsonAsync<List<AuditLogEntry>>();
+
+            await NotificationService.Info("Лог проверок успешно получен!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.Error($"Ошибка при получении лога: {ex.Message}");
         }
     }
 }
